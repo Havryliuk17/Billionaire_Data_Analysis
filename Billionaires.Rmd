@@ -1,0 +1,311 @@
+---
+title: "Exploring the world of the billionaires"
+authors: Olha Havryliuk, Anastasiia Dynia, Yuliia Vistak
+date: "2023-12-13"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+### Team
+
+-   *Olha Havryliuk*
+
+-   *Anastasiia Dynia*
+
+-   *Yuliia Vistak*
+
+## Aim
+
+$A$ - {"Being a student of IT&BA"}
+
+$B$ - {"Being a future billionaire"}
+
+$P(A \cap B) = 1$
+
+As we are BA-students, we decided to dive into the world of billionaires and explore the dependency between billionaires and related to them characteristics.
+
+### Preparing data
+
+This dataset provides us with a certain information about the richest people in the world, such as: industry of their occupation, titles in the companies they work, basic characteristics of the countries, where they live, etc. In our research we will focus on such data:
+
+-   Age
+
+-   Countries, where billionaires live
+
+-   GDP of those countries
+
+```{r}
+library(tidytext)
+library(readr)
+library(caret)
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(fitdistrplus)
+```
+
+```{r}
+require(BSDA)
+library(BSDA)
+require(EnvStats)   
+library(EnvStats)
+```
+
+```{r}
+data <- read.csv("Billionaires Statistics Dataset.csv")
+```
+
+```{r}
+rows_to_remove <- c()
+
+for (i in 1:nrow(data)) {
+  if (is.na(data[i, "age"]) || is.na(data[i, "population_country"])) {
+    rows_to_remove <- c(rows_to_remove, i)
+  }
+}
+
+data_clean <- data[-rows_to_remove, ]
+```
+
+## First hypothesis
+
+#### Age data
+
+```{r}
+billionaires_age <- data_clean$age
+length(billionaires_age)
+```
+
+We selected age data from a general dataset. It will be our sample of 2427 values that we will analyze.
+
+### Analysis
+
+```{r}
+summary_statistics <- summary(billionaires_age)
+
+sample_mean <- mean(billionaires_age)
+sample_deviation <- sd(billionaires_age)
+
+summary_statistics
+sample_mean
+sample_deviation
+```
+
+-   *Mean:* The average age is approximately 65.14 years.
+-   *Standard Deviation:* The age data has a standard deviation of approximately 13.1 years, indicating the spread of ages around the mean.
+-   *Minimum Age:* The youngest age in the dataset is 18 years.
+-   *25th Percentile:* 25% of the billionaires are 56 years old or younger.
+-   *Median:* The median age is 65 years, meaning that half of the billionaires are younger than 65 and half are older.
+-   *75th Percentile:* 75% of the billionaires are 74 years old or younger.
+-   *Maximum Age:* The oldest age in the dataset is 101 years.
+
+#### c.d.f. vs empirical c.d.f.
+
+```{r}
+x <- seq(min(billionaires_age), max(billionaires_age), length.out = 100)
+empirical_cdf <- ecdf(billionaires_age)
+theoretical_cdf <- pnorm(x, mean = sample_mean, sd = sample_deviation)
+
+plot(empirical_cdf, main = "Empirical vs Theoretical CDF", xlab = "Age", ylab = "CDF", col = "blue")
+lines(x, theoretical_cdf, col = "red")
+legend("bottomright", legend = c("Empirical CDF", "Theoretical CDF"), col = c("blue", "red"), lty = 1)
+```
+
+As we may see, empirical cdf of the age data is pretty close to cdf of Normal distribution with $\mu$ = sample mean and $\sigma^2$ = sample variance. This led us to idea that the distribution of the data is normal with corresponding parameters.
+
+Let's continue our analysis!
+
+#### p.d.f. vs empirical p.d.f.
+
+```{r}
+x <- seq(min(data_clean$age, na.rm = TRUE), max(data_clean$age, na.rm = TRUE), length.out = 100)
+
+hist(data_clean$age, freq = FALSE, col = "pink", main = "Normal Distribution Overlaid on Age Data", xlab = "Age", ylab = "Density")
+
+lines(density(data_clean$age, na.rm = TRUE), col = 'darkred', lwd = 3)
+
+lines(x, dnorm(x, mean = sample_mean, sd = sample_deviation), col = 'blue', lwd = 3)
+```
+
+```{r}
+df <- data.frame(age = billionaires_age)
+mean_age <- mean(df$age, na.rm = TRUE) 
+sd_age <- sd(df$age, na.rm = TRUE) 
+p <- ggplot(df, aes(x = age)) +   geom_density(fill = "pink", alpha = 0.5) +   labs(title = "Density of Billionaires' Ages", x = "Age", y = "Density") +   theme_minimal()
+p <- p + stat_function(fun = dnorm, args = list(mean = mean_age, sd = sd_age), geom = "area", fill = "blue", alpha = 0.3)
+p + stat_function(fun = dnorm, args = list(mean = mean_age, sd = sd_age), geom = "line", color = "black", size = 1)
+```
+
+#### Skewness
+
+```{r}
+sk <- skewness(billionaires_age)
+sk
+```
+
+We got negative skewness. That means that the distribution of age data is left-skewed. Since the skewness is close to zero, it indicates that the data's distribution is quite symmetrical.
+
+#### Kurtosis
+
+```{r}
+k <- kurtosis(billionaires_age)
+k
+```
+
+Kurtosis of standard normal distribution is equal to 0 (if we substract 3). We got kurtosis that is less than 0. That means that distribution of our data has 'flatter peak'. The data is more evenly distributed across the range, with fewer values around the mean compared to a normal distribution.
+
+### Hypothesis Testing
+
+$H_0$: Distribution of age data is Normal.\
+$H_1$: Distribution of age data is not Normal.
+
+For testing distribution of our sample we are going to use Kolmogorov's Goodness-of-fit test.
+
+#### Kolmogorov's Goodness-of-fit test.
+
+$X_1,…,X_n$ - independent identically distributed random variables from unknown distribution $F$.\
+
+For a given hypothetical distribution $F_0$ we want to test $$H_0:F=F_0\,\,\,\, vs \,\,\,\,H_1:F≠F_0$$
+
+By LLN, the sample c.d.f. $\hat F_X(t)$ is close to $F_0(t)$.
+
+Thus under $H_0$ the d-statistics: $$ d = sup_{t\in \mathbb{R}}|\hat F_X(t) - F_0(t)|$$ should take small values. 
+
+Under $H_1$, $d$ assumes larger values. This is the Kolmogorov's goodness-of-fit test with rejection region \
+$$ \mathcal{C}_\alpha := \{ \mathbf{x} \in \mathbb{R}^n \mid d \geq d^{(n)}_{1-\alpha} \} $$
+
+Let's test our hypothesis!
+
+```{r}
+ks_result <- ks.test(billionaires_age, 'pnorm', mean = sample_mean, sd = sample_deviation)
+print(ks_result)
+```
+
+By using this test, we got p-value = 0,004479. It is even smaller than 0,01. That means that we are going to reject $H_0$ .
+
+#### Cullen and Frey graph
+
+We also want to see if our data fits some other distribution. That's why we are going to use the Cullen and Frey graph.
+
+The Cullen and Frey graph is a graphical tool used to assess the skewness and kurtosis of data for the purpose of identifying a theoretical distribution that may fit the data well. The graph plots the square of skewness against kurtosis and overlays regions that correspond to different types of distributions.
+
+Here's a brief explanation of how the descdist function, which generates the Cullen and Frey graph, typically works:
+
+The function computes the skewness and kurtosis of the provided dataset. It then plots the square of the skewness on the x-axis and the kurtosis on the y-axis. The graph includes lines or areas that represent the range of values for skewness and kurtosis for different theoretical distributions, such as normal, uniform, exponential, lognormal, etc... A marker indicates the skewness and kurtosis of the actual data on the graph.
+
+```{r}
+descdist(billionaires_age)
+```
+
+From the Cullen and Frey graph that we got after our analysis, we can make such conclusions:
+
+The observation marker lies in the region that corresponds to the normal distribution, which is indicated by a skewness close to zero and kurtosis close to three. This placement suggests that the data may be normally distributed or close normal distribution. The fact that the observation marker is not exactly on the line for the normal distribution but slightly above suggests that the data might have a slightly lower kurtosis than the normal distribution, implying a more peaked distribution with potentially heavier tails.
+
+### Conclusion
+
+So, based on our test and analysis, we may say that our data is close to normal distribution but it isn't exactly normal one. In fact, it doesn't fit to any known distribution.
+
+## Second hypothesis
+
+### Intro
+
+There is a rumor that richer people live in countries with higher GDP. We decided to explore whether this is true or not, so we formulated the following hypotheses:
+
+$H_0$: There is no dependency between the number of billionaires and GDP per capita of the country where they live.\
+$H_1$: There is dependency between the number of billionaires and GDP per capita of the country where they live.
+
+### Preparing GDP and other data
+
+```{r}
+gdp_per_capita_df <- data_clean %>%
+  mutate(gdp_country = as.numeric(gsub("[^0-9.]", "", gdp_country)), 
+         population_country = as.numeric(gsub("[^0-9.]", "", population_country)), 
+         GDP_per_Capita = gdp_country / population_country) %>%
+  dplyr::select(country, GDP_per_Capita) %>%
+  distinct(country, .keep_all = TRUE)
+
+country_counts <- table(data_clean$country)
+country_mentions_df <- as.data.frame(country_counts)
+names(country_mentions_df) <- c("Country", "Quantity")
+
+combined_df <- left_join(country_mentions_df, gdp_per_capita_df, by = c("Country" = "country"))
+
+combined_df
+```
+
+### Analysis
+
+```{r}
+combined_df <- combined_df %>%
+  arrange(desc(Quantity))
+
+ggplot(combined_df, aes(x = reorder(Country, -Quantity))) +
+  geom_bar(aes(y = Quantity), stat = "identity", fill = "#1f77b4") + 
+  geom_line(aes(y = GDP_per_Capita / 1000, group = 1), color = "#d62728", size = 1) +
+
+  scale_y_continuous(
+    name = "Quantity",
+    sec.axis = sec_axis(~ . * 1000, name = "GDP per Capita (in thousands)")
+  ) +
+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 10, color = "grey20"),
+        axis.text.y = element_text(size = 10, color = "grey20"),
+        axis.title = element_text(size = 12, face = "bold"),
+        plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
+        legend.position = "bottom",
+        panel.background = element_rect(fill = "white"),
+        panel.grid.major = element_line(color = "grey80"),
+        panel.grid.minor = element_blank(),
+        plot.margin = margin(10, 10, 10, 10)) +
+
+  xlab("Country") +
+  ggtitle("Quantity and GDP per Capita per Country")
+```
+
+On this plot we can see quantity of billionaires in a certain country in descending order and GDP per capita in this country. We did it in order to visually observe if there is any dependency between them. From this plot we cannot claim that these 2 factors are dependent, but only visual representation of the data is not enough for us to accept or reject our null hypothesis, so we proceed our testing.
+
+### Testing using Chi-squared test for independence
+
+The chi-square statistic is a measure of the difference between the observed frequencies and the expected frequencies. It's calculated using the formula: $$ \chi^2 = \sum_{i,\, j} \frac{(O_{ij} - E_{ij})^2}{E_{ij}}, $$ A large value of $\chi^2$ will suggest a big difference between the observed and expected frequencies, indicating that 'Quantity' and 'GDP per Capita' may not be independent.
+
+```{r}
+table_data <- table(combined_df$Quantity, combined_df$GDP_per_Capita)
+test <- chisq.test(table_data)
+test
+```
+
+We got p-value = 0.3151. It is pretty large value comparing to standard 0.05 or even 0.1. So according to this test we can not reject $H_0$.
+
+### Constructing linear regression
+
+Also we want to be more precise and test our hypothesis using linear regression.
+
+Let $X$ be the independent r.v. that represents GDP per capita at each country and $Y$ be r.v. that represents number of billionaires at each country
+
+```{r}
+x <- combined_df$GDP_per_Capita
+y <- combined_df$Quantity
+
+billionaires.lm <- lm(y~x)
+plot(x,y,pch = 16,xlim=c(0,200000), col = "blue")
+abline(billionaires.lm, col = "red")
+```
+
+```{r}
+summary(billionaires.lm)
+```
+
+Estimate of slope is quite close to zero. Also p-value of t-test that b = 0 (where b - slope) is pretty large comparing to 0.05 . It means that we are more likely not to reject that b = 0.
+
+We know that if $r^2$ is close to 1 we reject that b = 0. But we got the opposite output ($r^2$ is pretty far from 0). That means that we are more likely not to reject.
+
+All in all, based on this, we may say that there is extremely small dependency between $Y$ and $X$. So we are more likely not to reject our $H_0$.
+
+### Conclusion
+
+We got pretty similar results from the chi-squared test and linear regression model. Both of them tells us that we are likely not to reject our null hypothesis. So we can claim that there is no dependency between the GDP of the country and the quantity of billionaires in the country.
+
+## General conclusion
+
+From our tests we got that the age data probably has its unique distribution. Also we got that probably there is no dependency between number of billionaires and the country where they live. Therefore, we believe we can become billionaires anywhere and hope to earn our first billion as soon as possible:)
